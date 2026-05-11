@@ -5,6 +5,7 @@ import json
 
 # Import the database function we wrote earlier
 from engine.db import get_db_connection
+from engine.redis_queue import push_job_to_queue
 
 # Initialize the FastAPI app
 app = FastAPI(title="VortexQueue API")
@@ -35,6 +36,8 @@ async def create_job(request: JobRequest):
                 INSERT INTO jobs (job_id, task_name, payload, status)
                 VALUES (%s, %s, %s, 'PENDING')
             """, (job_id, request.task_name, json.dumps(request.payload)))
+
+        push_job_to_queue(job_id, request.task_name, request.payload)
             
         # Return a success message back to the user/frontend
         return {
