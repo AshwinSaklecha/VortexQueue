@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     REDIS_URL: str = "redis://localhost:6379"
 
+    MAIN_QUEUE: str = "vortex:queue:main"
+
     VISIBILITY_TIMEOUT: int = 300      # seconds — how long a processing lock lives
     HEARTBEAT_INTERVAL: int = 10       # seconds — how often a worker refreshes the lock
     MAX_RETRIES: int = 5

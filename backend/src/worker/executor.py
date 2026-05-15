@@ -23,8 +23,6 @@ logger = logging.getLogger(__name__)
 # Exponential backoff delay ladder (seconds) — index = retry_count - 1
 BACKOFF_DELAYS = [10, 30, 60, 120, 300]
 
-MAIN_QUEUE = "vortex:queue:main"
-
 
 def execute(job_id: str, task_type: str, payload: dict, retry_count: int) -> None:
     redis = get_redis()
@@ -99,7 +97,7 @@ def execute(job_id: str, task_type: str, payload: dict, retry_count: int) -> Non
             "enqueued_at": datetime.now(timezone.utc).isoformat(),
             "retry_count": retry_count,
         })
-        redis.lpush(MAIN_QUEUE, updated_payload)
+        redis.lpush(settings.MAIN_QUEUE, updated_payload)
         update_job_status(job_id, "QUEUED", retry_count=retry_count)
 
         redis.delete(processing_key)

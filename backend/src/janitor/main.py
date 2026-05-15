@@ -31,8 +31,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MAIN_QUEUE = "vortex:queue:main"
-
 shutdown_requested = False
 
 
@@ -72,7 +70,7 @@ def scan_once(redis) -> int:
             "enqueued_at": datetime.now(timezone.utc).isoformat(),
             "retry_count": job["retry_count"],
         })
-        redis.lpush(MAIN_QUEUE, queue_payload)
+        redis.lpush(settings.MAIN_QUEUE, queue_payload)
         update_job_status(job_id, "QUEUED")
         rescued += 1
 

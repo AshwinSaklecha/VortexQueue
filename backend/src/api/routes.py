@@ -14,12 +14,11 @@ from src.api.schemas import (
     DashboardStats,
     JobsByStatus,
 )
+from src.core.config import settings
 from src.core.database import insert_job, get_job, get_stats, delete_job
 from src.core.redis import get_redis
 
 router = APIRouter()
-
-MAIN_QUEUE = "vortex:queue:main"
 
 
 @router.post("/jobs", response_model=JobCreateResponse, status_code=202)
@@ -41,7 +40,7 @@ def create_job(request: JobCreateRequest):
         "retry_count": 0,
     })
     try:
-        redis.lpush(MAIN_QUEUE, queue_payload)
+        redis.lpush(settings.MAIN_QUEUE, queue_payload)
     except Exception as exc:
         logger.error("Redis LPUSH failed for job %s — rolling back DB insert: %s", job_id, exc)
         delete_job(job_id)
@@ -75,7 +74,7 @@ def get_job_status(job_id: str):
 @router.get("/dashboard-stats", response_model=DashboardStats)
 def dashboard_stats():
     redis = get_redis()
-    queue_depth = redis.llen(MAIN_QUEUE)
+    queue_depth = redis.llen(settings.MAIN_QUEUE)
 
     raw = get_stats()
 

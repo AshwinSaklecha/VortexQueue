@@ -25,8 +25,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-MAIN_QUEUE = "vortex:queue:main"
-
 # ---------------------------------------------------------------------------
 # Graceful shutdown — set by SIGTERM / SIGINT, checked between jobs
 # ---------------------------------------------------------------------------
@@ -51,11 +49,11 @@ def worker_loop() -> None:
     create_tables()   # idempotent — ensures tables exist even if API never ran
 
     redis = get_redis()
-    logger.info("Worker %s started. Listening on %s ...", settings.WORKER_ID, MAIN_QUEUE)
+    logger.info("Worker %s started. Listening on %s ...", settings.WORKER_ID, settings.MAIN_QUEUE)
 
     while not shutdown_requested:
         # BRPOP blocks up to 5s, then returns None — lets us re-check shutdown flag
-        result = redis.brpop(MAIN_QUEUE, timeout=5)
+        result = redis.brpop(settings.MAIN_QUEUE, timeout=5)
 
         if result is None:
             continue   # timeout, loop again — checks shutdown_requested at top
@@ -63,7 +61,7 @@ def worker_loop() -> None:
         if shutdown_requested:
             # Put the job back before exiting so it isn't lost
             _, raw = result
-            redis.lpush(MAIN_QUEUE, raw)
+            redis.lpush(settings.MAIN_QUEUE, raw)
             logger.info("Shutdown requested — job returned to queue, exiting cleanly.")
             break
 
@@ -110,7 +108,7 @@ def worker_loop() -> None:
                 job_id, exc,
             )
             redis.delete(processing_key)
-            redis.lpush(MAIN_QUEUE, raw)
+            redis.lpush(settings.MAIN_QUEUE, raw)
             continue
 
         # ------------------------------------------------------------------
