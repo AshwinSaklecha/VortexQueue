@@ -1,5 +1,9 @@
 version: "3.9"
 
+# For local dev: use backend/.env directly (localhost URLs work fine)
+# For Docker: DATABASE_URL and REDIS_URL are overridden per-service below
+#             so containers reach each other by service name, not localhost.
+
 services:
 
   # ── Infrastructure ─────────────────────────────────────────────────────────
@@ -8,7 +12,7 @@ services:
     image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your shell or a root .env file}
       POSTGRES_DB: job_queue_db
     ports:
       - "5432:5432"
@@ -39,6 +43,10 @@ services:
     ports:
       - "8000:8000"
     env_file: ./backend/.env
+    environment:
+      # Override the localhost URLs from .env — inside Docker, service names are the hostnames
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/job_queue_db
+      REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy
@@ -51,6 +59,9 @@ services:
       context: ./backend
     command: python -m src.worker.main
     env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/job_queue_db
+      REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,6 +76,9 @@ services:
       context: ./backend
     command: python -m src.janitor.main
     env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/job_queue_db
+      REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy

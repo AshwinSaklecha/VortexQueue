@@ -94,6 +94,23 @@ def insert_job(job_id: str, task_type: str, payload: dict) -> dict:
             row = dict(cur.fetchone())
         conn.commit()
         return row
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        put_conn(conn)
+
+
+def delete_job(job_id: str) -> None:
+    """Hard-delete a job row — used only for rollback compensation in the API."""
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM jobs WHERE id = %s", (job_id,))
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         put_conn(conn)
 
@@ -129,6 +146,9 @@ def update_job_status(
                 values,
             )
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         put_conn(conn)
 
@@ -179,6 +199,9 @@ def insert_dlq(
                 (job_id, task_type, json.dumps(payload), failure_reason, retry_count),
             )
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         put_conn(conn)
 

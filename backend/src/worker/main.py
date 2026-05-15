@@ -99,8 +99,19 @@ def worker_loop() -> None:
 
         # ------------------------------------------------------------------
         # Update DB → PROCESSING
+        # If this fails, return the job to the queue before re-raising so
+        # it isn't silently lost (it's already been popped from Redis).
         # ------------------------------------------------------------------
-        update_job_status(job_id, "PROCESSING", worker_id=settings.WORKER_ID)
+        try:
+            update_job_status(job_id, "PROCESSING", worker_id=settings.WORKER_ID)
+        except Exception as exc:
+            logger.error(
+                "Failed to mark job %s as PROCESSING in DB — returning to queue: %s",
+                job_id, exc,
+            )
+            redis.delete(processing_key)
+            redis.lpush(MAIN_QUEUE, raw)
+            continue
 
         # ------------------------------------------------------------------
         # Heartbeat thread — keeps processing key alive for long-running jobs

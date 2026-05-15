@@ -1,8 +1,11 @@
 import uuid
 import json
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
+
+logger = logging.getLogger(__name__)
 
 from src.api.schemas import (
     JobCreateRequest,
@@ -11,7 +14,7 @@ from src.api.schemas import (
     DashboardStats,
     JobsByStatus,
 )
-from src.core.database import insert_job, get_job, get_stats
+from src.core.database import insert_job, get_job, get_stats, delete_job
 from src.core.redis import get_redis
 
 router = APIRouter()
@@ -26,7 +29,9 @@ def create_job(request: JobCreateRequest):
     # 1. Persist to DB first (source of truth)
     insert_job(job_id, request.task_type, request.payload)
 
-    # 2. Push onto Redis queue — atomic LPUSH, workers BRPOP from the right
+    # 2. Push onto Redis queue — atomic LPUSH, workers BRPOP from the right.
+    #    If Redis fails after a successful DB insert, roll back the DB row so
+    #    the two stores stay consistent and the caller gets a clean 500.
     redis = get_redis()
     queue_payload = json.dumps({
         "job_id": job_id,
@@ -35,7 +40,12 @@ def create_job(request: JobCreateRequest):
         "enqueued_at": datetime.now(timezone.utc).isoformat(),
         "retry_count": 0,
     })
-    redis.lpush(MAIN_QUEUE, queue_payload)
+    try:
+        redis.lpush(MAIN_QUEUE, queue_payload)
+    except Exception as exc:
+        logger.error("Redis LPUSH failed for job %s — rolling back DB insert: %s", job_id, exc)
+        delete_job(job_id)
+        raise HTTPException(status_code=503, detail="Queue unavailable, please retry")
 
     return JobCreateResponse(
         job_id=job_id,
