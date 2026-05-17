@@ -4,13 +4,9 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 
-import { getJob, type JobResponse, type JobStatus, type TaskType } from "@/lib/api";
+import { getJob, type JobResponse, type JobStatus, type TaskType, type TrackedJobSeed } from "@/lib/api";
+import { JobResultModal } from "@/components/JobResultModal";
 import { cn } from "@/lib/utils";
-
-export type TrackedJobSeed = {
-  job_id: string;
-  task_type: TaskType;
-};
 
 type JobBoardProps = {
   trackedJobs: TrackedJobSeed[];
@@ -39,6 +35,7 @@ function fallbackJob(seed: TrackedJobSeed): DisplayJob {
     updated_at: now,
     worker_id: null,
     error_msg: null,
+    result: null,
   };
 }
 
@@ -73,62 +70,79 @@ function JobCard({ job }: { job: DisplayJob }) {
   const shortId = job.job_id.slice(0, 8);
   const workerSuffix = job.worker_id?.slice(-12);
   const failed = job.status === "FAILED";
+  const hasResult = job.status === "SUCCESS" && job.result != null;
+  const [modalOpen, setModalOpen] = useState(false);
 
   return (
-    <motion.div
-      layout
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: -8 }}
-      transition={{ duration: 0.18, ease: "easeOut" }}
-      className={cn(
-        "rounded-lg border border-zinc-900 border-l-2 bg-surface-raised p-3",
-        statusBorder(job.status),
-      )}
-    >
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <code className="font-mono text-sm text-white">{shortId}</code>
-        <span className="rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[11px] text-zinc-400">
-          {job.task_type}
-        </span>
-      </div>
-
-      <div className="flex flex-col gap-1 text-xs text-zinc-500">
-        <div className="flex items-center justify-between gap-3">
-          <span>Status</span>
-          <span
-            className={cn(
-              "font-medium text-zinc-300",
-              job.status === "SUCCESS" && "text-green-400",
-              job.status === "FAILED" && "text-red-400",
-              job.status === "PROCESSING" && "text-amber-400",
-            )}
-          >
-            {job.status}
+    <>
+      <motion.div
+        layout
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -8 }}
+        transition={{ duration: 0.18, ease: "easeOut" }}
+        className={cn(
+          "rounded-lg border border-zinc-900 border-l-2 bg-surface-raised p-3",
+          statusBorder(job.status),
+        )}
+      >
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <code className="font-mono text-sm text-white">{shortId}</code>
+          <span className="rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-0.5 text-[11px] text-zinc-400">
+            {job.task_type}
           </span>
         </div>
 
-        {job.retry_count > 0 ? (
-          <div className="flex items-center justify-between gap-3 text-amber-400">
-            <span>Retries</span>
-            <span className="font-medium">{job.retry_count}</span>
-          </div>
-        ) : null}
-
-        {workerSuffix && job.status === "PROCESSING" ? (
+        <div className="flex flex-col gap-1 text-xs text-zinc-500">
           <div className="flex items-center justify-between gap-3">
-            <span>Worker</span>
-            <code className="max-w-36 truncate font-mono text-zinc-300">
-              {workerSuffix}
-            </code>
+            <span>Status</span>
+            <span
+              className={cn(
+                "font-medium text-zinc-300",
+                job.status === "SUCCESS" && "text-green-400",
+                job.status === "FAILED" && "text-red-400",
+                job.status === "PROCESSING" && "text-amber-400",
+              )}
+            >
+              {job.status}
+            </span>
           </div>
-        ) : null}
 
-        {failed && job.error_msg ? (
-          <p className="line-clamp-2 text-red-400">{job.error_msg}</p>
-        ) : null}
-      </div>
-    </motion.div>
+          {job.retry_count > 0 ? (
+            <div className="flex items-center justify-between gap-3 text-amber-400">
+              <span>Retries</span>
+              <span className="font-medium">{job.retry_count}</span>
+            </div>
+          ) : null}
+
+          {workerSuffix && job.status === "PROCESSING" ? (
+            <div className="flex items-center justify-between gap-3">
+              <span>Worker</span>
+              <code className="max-w-36 truncate font-mono text-zinc-300">
+                {workerSuffix}
+              </code>
+            </div>
+          ) : null}
+
+          {failed && job.error_msg ? (
+            <p className="line-clamp-2 text-red-400">{job.error_msg}</p>
+          ) : null}
+        </div>
+
+        {hasResult && (
+          <button
+            onClick={() => setModalOpen(true)}
+            className="mt-3 w-full rounded border border-zinc-800 bg-zinc-950 py-1.5 text-xs font-medium text-white transition-colors hover:border-zinc-600"
+          >
+            View Result →
+          </button>
+        )}
+      </motion.div>
+
+      {modalOpen && (
+        <JobResultModal job={job} onClose={() => setModalOpen(false)} />
+      )}
+    </>
   );
 }
 

@@ -14,6 +14,35 @@ export type JobCreateResponse = {
   message: string;
 };
 
+export type ImageResult = {
+  image_b64: string;
+  format: string;
+  original_size: [number, number];
+  final_size: [number, number];
+  mode: string;
+  operations_applied: string[];
+};
+
+export type ScrapingResult = {
+  url: string;
+  scraped: Record<string, string[]>;
+};
+
+export type InvoiceResult = {
+  pdf_b64: string;
+  filename: string;
+  total: number;
+  items_count: number;
+  email: string;
+};
+
+export type TaskResult = ImageResult | ScrapingResult | InvoiceResult;
+
+export type TrackedJobSeed = {
+  job_id: string;
+  task_type: TaskType;
+};
+
 export type JobResponse = {
   job_id: string;
   task_type: TaskType;
@@ -23,6 +52,7 @@ export type JobResponse = {
   updated_at: string;
   worker_id: string | null;
   error_msg: string | null;
+  result: TaskResult | null;
 };
 
 export type DashboardStats = {

@@ -4,10 +4,11 @@ import { useCallback, useState } from "react";
 import useSWR from "swr";
 
 import { ControlBar } from "@/components/ControlBar";
-import { JobBoard, type TrackedJobSeed } from "@/components/JobBoard";
+import { JobBoard } from "@/components/JobBoard";
 import { MetricsGrid } from "@/components/MetricsGrid";
+import { SubmitJobForm } from "@/components/SubmitJobForm";
 import { ThroughputChart } from "@/components/ThroughputChart";
-import { getDashboardStats } from "@/lib/api";
+import { getDashboardStats, type TrackedJobSeed } from "@/lib/api";
 
 const MAX_TRACKED_JOBS = 100;
 
@@ -49,6 +50,8 @@ export default function DashboardPage() {
           <MetricsGrid stats={stats} />
           <ThroughputChart stats={stats} />
         </section>
+
+        <SubmitJobForm onJobCreated={(job) => addTrackedJobs([job])} />
 
         <JobBoard trackedJobs={trackedJobs} />
       </div>

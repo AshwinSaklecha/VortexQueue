@@ -27,6 +27,7 @@ class JobResponse(BaseModel):
     updated_at: datetime
     worker_id: Optional[str] = None
     error_msg: Optional[str] = None
+    result: Optional[dict] = None
 
 
 class JobCreateResponse(BaseModel):

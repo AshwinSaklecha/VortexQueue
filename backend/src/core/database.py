@@ -43,8 +43,14 @@ CREATE TABLE IF NOT EXISTS jobs (
     created_at   TIMESTAMPTZ  DEFAULT NOW(),
     updated_at   TIMESTAMPTZ  DEFAULT NOW(),
     worker_id    VARCHAR(100),
-    error_msg    TEXT
+    error_msg    TEXT,
+    result       JSONB
 );
+"""
+
+# Adds result column to tables created before this column existed
+ALTER_JOBS_ADD_RESULT = """
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS result JSONB;
 """
 
 CREATE_DLQ_TABLE = """
@@ -67,6 +73,7 @@ def create_tables() -> None:
         with conn.cursor() as cur:
             cur.execute(CREATE_JOBS_TABLE)
             cur.execute(CREATE_DLQ_TABLE)
+            cur.execute(ALTER_JOBS_ADD_RESULT)
         conn.commit()
         print("[DB] Tables verified / created.")
     finally:
@@ -144,6 +151,24 @@ def update_job_status(
             cur.execute(
                 f"UPDATE jobs SET {', '.join(fields)} WHERE id = %s",
                 values,
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        put_conn(conn)
+
+
+def update_job_result(job_id: str, result: dict) -> None:
+    """Store the task result and mark the job SUCCESS atomically."""
+    import json
+    conn = get_conn()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE jobs SET result = %s, status = 'SUCCESS', updated_at = NOW() WHERE id = %s",
+                (json.dumps(result), job_id),
             )
         conn.commit()
     except Exception:

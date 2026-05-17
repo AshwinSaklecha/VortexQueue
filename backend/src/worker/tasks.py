@@ -3,13 +3,13 @@ The three concrete task implementations.
 
 Each function:
   - Accepts a `payload: dict`
-  - Returns a result dict on success
+  - Returns a result dict on success (stored in DB, returned via API)
   - Raises an exception on failure (triggers retry logic in executor)
 """
 
+import base64
 import io
 import logging
-import time
 
 import requests
 from bs4 import BeautifulSoup
@@ -18,6 +18,8 @@ from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.lib.pagesizes import A4
 
 logger = logging.getLogger(__name__)
+
+MAX_IMAGE_BYTES = 5 * 1024 * 1024  # 5 MB hard cap on input image download
 
 
 # ---------------------------------------------------------------------------
@@ -30,11 +32,28 @@ def image_processing(payload: dict) -> dict:
     operations: list = payload.get("operations", [])
 
     logger.info("[Task] image_processing: fetching %s", image_url)
-    response = requests.get(image_url, timeout=15)
+
+    # Stream the download and enforce a hard size limit
+    response = requests.get(image_url, timeout=15, stream=True)
     response.raise_for_status()
 
-    img = Image.open(io.BytesIO(response.content))
-    original_size = img.size
+    content_length = response.headers.get("Content-Length")
+    if content_length and int(content_length) > MAX_IMAGE_BYTES:
+        raise ValueError(
+            f"Image too large: {int(content_length) // 1024}KB (max 5MB)"
+        )
+
+    chunks = []
+    downloaded = 0
+    for chunk in response.iter_content(chunk_size=65536):
+        downloaded += len(chunk)
+        if downloaded > MAX_IMAGE_BYTES:
+            raise ValueError(f"Image exceeds 5MB limit during download")
+        chunks.append(chunk)
+    raw_bytes = b"".join(chunks)
+
+    img = Image.open(io.BytesIO(raw_bytes))
+    original_size = list(img.size)
 
     for op in operations:
         if op == "resize":
@@ -46,10 +65,9 @@ def image_processing(payload: dict) -> dict:
             logger.debug("[Task] converted to grayscale")
 
         elif op == "watermark":
-            # Convert to RGBA so we can paste text safely
-            if img.mode != "RGBA":
+            if img.mode not in ("RGB", "RGBA"):
                 img = img.convert("RGBA")
-            from PIL import ImageDraw, ImageFont
+            from PIL import ImageDraw
             draw = ImageDraw.Draw(img)
             draw.text((10, 10), "VortexQueue", fill=(255, 255, 255, 180))
             logger.debug("[Task] watermark applied")
@@ -57,10 +75,23 @@ def image_processing(payload: dict) -> dict:
         else:
             logger.warning("[Task] unknown operation '%s', skipping", op)
 
-    # In production: save to object storage. Here we just record dimensions.
+    # Encode the processed image as base64 PNG for storage and download
+    out_buf = io.BytesIO()
+    save_format = "PNG"
+    # Grayscale (L mode) saves fine as PNG; RGBA also fine; RGB fine
+    img.save(out_buf, format=save_format)
+    image_b64 = base64.b64encode(out_buf.getvalue()).decode("utf-8")
+
+    logger.info(
+        "[Task] image_processing: done — original %s → final %s, mode=%s, encoded=%dKB",
+        original_size, list(img.size), img.mode, len(image_b64) // 1024,
+    )
+
     return {
+        "image_b64": image_b64,
+        "format": save_format,
         "original_size": original_size,
-        "final_size": img.size,
+        "final_size": list(img.size),
         "mode": img.mode,
         "operations_applied": operations,
     }
@@ -77,17 +108,20 @@ def web_scraping(payload: dict) -> dict:
 
     logger.info("[Task] web_scraping: fetching %s", url)
     response = requests.get(url, timeout=20, headers={"User-Agent": "VortexQueue/1.0"})
-    response.raise_for_status()   # 4xx / 5xx → exception → retry
+    response.raise_for_status()
 
     soup = BeautifulSoup(response.text, "html.parser")
-    results: dict = {}
+    scraped: dict = {}
 
     for selector in selectors:
         elements = soup.select(selector)
-        results[selector] = [el.get_text(strip=True) for el in elements]
+        scraped[selector] = [el.get_text(strip=True) for el in elements]
         logger.debug("[Task] selector '%s' → %d matches", selector, len(elements))
 
-    return {"url": url, "scraped": results}
+    total_matches = sum(len(v) for v in scraped.values())
+    logger.info("[Task] web_scraping: done — %d total matches across %d selectors", total_matches, len(selectors))
+
+    return {"url": url, "scraped": scraped}
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +136,6 @@ def bulk_invoice(payload: dict) -> dict:
 
     logger.info("[Task] bulk_invoice: generating invoice for customer %s", customer_id)
 
-    # Build PDF in memory
     buffer = io.BytesIO()
     pdf = rl_canvas.Canvas(buffer, pagesize=A4)
     width, height = A4
@@ -127,21 +160,19 @@ def bulk_invoice(payload: dict) -> dict:
     pdf.save()
 
     pdf_bytes = buffer.getvalue()
+    pdf_b64 = base64.b64encode(pdf_bytes).decode("utf-8")
+
     logger.info(
-        "[Task] bulk_invoice: PDF generated (%d bytes), 'sending' to %s",
-        len(pdf_bytes),
-        email,
+        "[Task] bulk_invoice: PDF generated (%d bytes), 'sending' to %s (simulated)",
+        len(pdf_bytes), email,
     )
 
-    # Simulate sending email (log only — no real SMTP)
-    logger.info("[Task] bulk_invoice: EMAIL SENT to %s (simulated)", email)
-
     return {
-        "customer_id": customer_id,
-        "email": email,
-        "total": total,
-        "invoice_size_bytes": len(pdf_bytes),
+        "pdf_b64": pdf_b64,
+        "filename": f"invoice_{customer_id}.pdf",
+        "total": round(total, 2),
         "items_count": len(line_items),
+        "email": email,
     }
 
 
@@ -157,7 +188,7 @@ TASK_MAP = {
 
 
 def run(task_type: str, payload: dict) -> dict:
-    """Route task_type to the correct handler. Raises KeyError for unknown types."""
+    """Route task_type to the correct handler. Raises ValueError for unknown types."""
     handler = TASK_MAP.get(task_type)
     if handler is None:
         raise ValueError(f"Unknown task_type: '{task_type}'")

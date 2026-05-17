@@ -68,6 +68,7 @@ def get_job_status(job_id: str):
         updated_at=job["updated_at"],
         worker_id=job.get("worker_id"),
         error_msg=job.get("error_msg"),
+        result=job.get("result"),
     )
 
 

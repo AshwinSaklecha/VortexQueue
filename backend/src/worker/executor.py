@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 from src.core.config import settings
 from src.core.redis import get_redis
-from src.core.database import update_job_status, insert_dlq
+from src.core.database import update_job_status, update_job_result, insert_dlq
 from src.worker import tasks
 
 logger = logging.getLogger(__name__)
@@ -47,12 +47,12 @@ def execute(job_id: str, task_type: str, payload: dict, retry_count: int) -> Non
     try:
         logger.info("[Executor] running %s for job %s (attempt %d)", task_type, job_id, retry_count + 1)
         result = tasks.run(task_type, payload)
-        logger.info("[Executor] job %s succeeded: %s", job_id, result)
+        logger.info("[Executor] job %s succeeded", job_id)
 
-        # Mark complete — idempotency key lives for 24h
+        # Persist result + mark SUCCESS atomically, then release the lock
         redis.set(idempotency_key, "done", ex=86400)
         redis.delete(processing_key)
-        update_job_status(job_id, "SUCCESS")
+        update_job_result(job_id, result)
 
     except Exception as exc:
         retry_count += 1

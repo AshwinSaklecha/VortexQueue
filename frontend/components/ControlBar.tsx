@@ -11,7 +11,7 @@ import {
   TASK_TYPES,
   type TaskType,
 } from "@/lib/api";
-import type { TrackedJobSeed } from "@/components/JobBoard";
+import type { TrackedJobSeed } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type ControlBarProps = {
