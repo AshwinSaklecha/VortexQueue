@@ -1,0 +1,4 @@
+[flake8]
+per-file-ignores =
+    src/api/routes.py:E402
+    src/worker/tasks.py:F541

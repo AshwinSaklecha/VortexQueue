@@ -1,8 +1,23 @@
 # Python
 venv/
+.venv/
+env/
 __pycache__/
+.pytest_cache/
+pytest-cache-files-*/
+backend/pytest-cache-files-*/
 *.pyc
 *.pyo
+*.pyd
+*.egg-info/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
 
 # Environment files — real credentials, never commit
 .env
@@ -11,10 +26,23 @@ __pycache__/
 # Next.js
 node_modules/
 .next/
+out/
+.turbo/
+.vercel/
 dist/
 build/
 
+# Generated outputs
+outputs/
+backend/outputs/
+
+# Logs
+*.log
+
+# OS files
+.DS_Store
+Thumbs.db
+
 # Misc
 *.tsbuildinfo
-dev*.log
 scope.md
