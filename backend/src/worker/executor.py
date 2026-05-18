@@ -49,10 +49,11 @@ def execute(job_id: str, task_type: str, payload: dict, retry_count: int) -> Non
         result = tasks.run(task_type, payload)
         logger.info("[Executor] job %s succeeded", job_id)
 
-        # Persist result + mark SUCCESS atomically, then release the lock
+        # Persist result first, then set idempotency key so a crash between
+        # these two steps doesn't cause a retry to mark SUCCESS with null result.
+        update_job_result(job_id, result)
         redis.set(idempotency_key, "done", ex=86400)
         redis.delete(processing_key)
-        update_job_result(job_id, result)
 
     except Exception as exc:
         retry_count += 1

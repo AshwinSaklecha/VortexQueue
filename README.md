@@ -41,10 +41,10 @@ A production-grade distributed task queue built from scratch in Python — no Ce
 | Decision | Why |
 |---|---|
 | Raw Redis `BRPOP` instead of Celery | Demonstrates understanding of queue primitives, not library usage |
-| Visibility timeout + heartbeat instead of delete-on-pop | If a worker crashes mid-job, the key expires and the janitor rescues it — no message loss |
+| Visibility timeout + heartbeat instead of delete-on-pop | If a worker crashes mid-job, the key expires and the janitor rescues it — best-effort recovery (hard-crash in the narrow BRPOP→lock window is a known BRPOP limitation; production would use Redis Streams) |
 | Separate Janitor process | Decoupled responsibility; survives worker restarts independently |
 | Idempotency via Redis `SET NX` | O(1) check prevents double-execution in at-least-once delivery (critical for invoice generation) |
-| SIGTERM handler in worker | Worker finishes current job and returns it to queue on exit — zero data loss on deploy or scale-down |
+| SIGTERM handler in worker | Worker finishes current job and returns it to queue on graceful exit — protects against data loss on planned deploys and scale-downs |
 | Exponential backoff → DLQ | Prevents a poison-pill job from starving the queue; exhausted jobs land in a queryable Postgres table |
 | PostgreSQL as source of truth | Redis is ephemeral; DB survives restarts and gives the janitor a durable view of in-flight jobs |
 | Task results in JSONB | Processed images (base64 PNG), PDFs, and scraped data stored directly — no S3 needed for a portfolio demo; interview answer: production would use object storage + key in DB |
