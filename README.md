@@ -1,6 +1,6 @@
 # VortexQueue
 
-A production-grade distributed task queue built from scratch in Python — no Celery, no abstractions. Demonstrates raw Redis primitives, crash recovery, distributed locking, idempotency, and graceful degradation.
+A distributed task queue built from scratch in Python — no Celery, no abstractions. Demonstrates raw Redis primitives, crash recovery, distributed locking, idempotency, and graceful shutdown.
 
 **Stack:** FastAPI · PostgreSQL · Redis · Next.js
 
@@ -41,24 +41,28 @@ A production-grade distributed task queue built from scratch in Python — no Ce
 | Decision | Why |
 |---|---|
 | Raw Redis `BRPOP` instead of Celery | Demonstrates understanding of queue primitives, not library usage |
-| Visibility timeout + heartbeat instead of delete-on-pop | If a worker crashes mid-job, the key expires and the janitor rescues it — best-effort recovery (hard-crash in the narrow BRPOP→lock window is a known BRPOP limitation; production would use Redis Streams) |
+| Visibility timeout + heartbeat instead of delete-on-pop | If a worker crashes mid-job, the key expires and the janitor rescues it — best-effort recovery |
 | Separate Janitor process | Decoupled responsibility; survives worker restarts independently |
 | Idempotency via Redis `SET NX` | O(1) check prevents double-execution in at-least-once delivery (critical for invoice generation) |
-| SIGTERM handler in worker | Worker finishes current job and returns it to queue on graceful exit — protects against data loss on planned deploys and scale-downs |
+| SIGTERM handler in worker | Worker finishes the current job and returns it to the queue on graceful exit — no data loss on planned deploys |
 | Exponential backoff → DLQ | Prevents a poison-pill job from starving the queue; exhausted jobs land in a queryable Postgres table |
 | PostgreSQL as source of truth | Redis is ephemeral; DB survives restarts and gives the janitor a durable view of in-flight jobs |
-| Task results in JSONB | Processed images (base64 PNG), PDFs, and scraped data stored directly — no S3 needed for a portfolio demo; interview answer: production would use object storage + key in DB |
+| Task results in JSONB | Processed images (base64 PNG), PDFs, and scraped data stored directly — no object storage needed for a portfolio demo |
 | JSONB payload column | Flexible schema across 3 task types without separate tables |
+
+### Known limitation: sleep-based backoff
+
+Retry backoff is currently implemented with `time.sleep(delay)` inside the worker, blocking it for up to 300 seconds on a failed job. In production, the correct approach is a Redis sorted-set delay queue (`ZADD` scored by due-time), which lets the worker remain available for other jobs during the wait window. The current design is intentionally simple and is a good interview discussion point.
 
 ---
 
 ## Task Types
 
-**`image_processing`** — downloads a real image from a URL (5MB cap), applies Pillow transformations (resize, grayscale, watermark), returns the processed image as a downloadable PNG.
+**`image_processing`** — downloads an image from a URL (5 MB cap), applies Pillow transformations (resize, grayscale, watermark), returns the processed image as a base64-encoded PNG.
 
 **`web_scraping`** — fetches a real URL with `requests` + BeautifulSoup, extracts elements by CSS selector, returns structured scraped content. Handles timeouts and 4xx/5xx errors (triggers retries).
 
-**`bulk_invoice`** — generates a real PDF invoice using ReportLab with customer ID, line items, and totals. Returns the PDF as a downloadable file. Idempotency prevents double-generation.
+**`bulk_invoice`** — generates a PDF invoice using ReportLab with customer ID, line items, and totals. Returns the PDF as a base64-encoded file. Idempotency prevents double-generation.
 
 ---
 
@@ -177,7 +181,7 @@ cd backend && python -m src.janitor.main
 
 **Custom job with real output:** Expand "Submit Custom Job" → pick Web Scraping → enter any URL → submit → click "View Result" to see live scraped data. Or submit an invoice and download the generated PDF.
 
-**Retry + DLQ:** Submit a web scraping job with a broken URL. Watch the retry counter increment on the card across 5 attempts with exponential backoff (10s → 30s → 60s → 120s → 300s). After the 5th failure, the Dead Letter count goes red.
+**Retry + DLQ:** Submit a web scraping job with a broken URL. Watch the retry counter increment on the card across 5 attempts with exponential backoff. After the 5th failure, the Dead Letter count goes red.
 
 **Crash recovery (janitor demo):**
 1. Set `VISIBILITY_TIMEOUT=30` in `backend/.env`, restart processes
@@ -196,6 +200,23 @@ GET  /api/dashboard-stats   Live metrics for the dashboard
 ```
 
 Task types: `image_processing` · `web_scraping` · `bulk_invoice`
+
+---
+
+## Tests
+
+```bash
+cd backend
+pytest tests/ -v
+```
+
+**14 unit tests** covering:
+- Job creation and Redis compensation rollback on queue failure
+- Executor: happy path, retry path, DLQ path, idempotency skip
+- Janitor: orphan rescue and healthy-job skip logic
+- Tasks: image processing (resize + grayscale), web scraping (selector extraction), PDF invoice generation
+
+Tests are fully isolated — no real Redis or PostgreSQL required (all external calls are monkeypatched).
 
 ---
 

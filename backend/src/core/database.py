@@ -1,8 +1,13 @@
+import json
+import logging
+
 import psycopg2
 import psycopg2.pool
 from psycopg2.extras import RealDictCursor
 from typing import Optional
 from src.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 # Module-level connection pool — initialised once, shared across all imports
 _pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
@@ -75,7 +80,7 @@ def create_tables() -> None:
             cur.execute(CREATE_DLQ_TABLE)
             cur.execute(ALTER_JOBS_ADD_RESULT)
         conn.commit()
-        print("[DB] Tables verified / created.")
+        logger.info("[DB] Tables verified / created.")
     finally:
         put_conn(conn)
 
@@ -86,7 +91,6 @@ def create_tables() -> None:
 
 def insert_job(job_id: str, task_type: str, payload: dict) -> dict:
     """Insert a new job in QUEUED state and return the full row."""
-    import json
     conn = get_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -162,7 +166,6 @@ def update_job_status(
 
 def update_job_result(job_id: str, result: dict) -> None:
     """Store the task result and mark the job SUCCESS atomically."""
-    import json
     conn = get_conn()
     try:
         with conn.cursor() as cur:
@@ -211,7 +214,6 @@ def insert_dlq(
     retry_count: int,
 ) -> None:
     """Move an exhausted job into the dead-letter queue table."""
-    import json
     conn = get_conn()
     try:
         with conn.cursor() as cur:
