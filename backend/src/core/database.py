@@ -1,5 +1,6 @@
 import json
 import logging
+from threading import Lock
 
 import psycopg2
 import psycopg2.pool
@@ -11,16 +12,19 @@ logger = logging.getLogger(__name__)
 
 # Module-level connection pool — initialised once, shared across all imports
 _pool: Optional[psycopg2.pool.ThreadedConnectionPool] = None
+_pool_lock = Lock()
 
 
 def get_pool() -> psycopg2.pool.ThreadedConnectionPool:
     global _pool
     if _pool is None:
-        _pool = psycopg2.pool.ThreadedConnectionPool(
-            minconn=1,
-            maxconn=10,
-            dsn=settings.DATABASE_URL,
-        )
+        with _pool_lock:
+            if _pool is None:
+                _pool = psycopg2.pool.ThreadedConnectionPool(
+                    minconn=2,
+                    maxconn=75,
+                    dsn=settings.DATABASE_URL,
+                )
     return _pool
 
 

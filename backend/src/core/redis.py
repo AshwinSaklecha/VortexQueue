@@ -5,7 +5,7 @@ from src.core.config import settings
 _pool = redis.ConnectionPool.from_url(
     settings.REDIS_URL,
     decode_responses=True,   # always work with str, never bytes
-    max_connections=20,
+    max_connections=50,
 )
 
 
