@@ -3,16 +3,31 @@
 import { useCallback, useState } from "react";
 import useSWR from "swr";
 
+import { BackendWarmupGate } from "@/components/BackendWarmupGate";
 import { ControlBar } from "@/components/ControlBar";
 import { JobBoard } from "@/components/JobBoard";
 import { MetricsGrid } from "@/components/MetricsGrid";
 import { SubmitJobForm } from "@/components/SubmitJobForm";
 import { ThroughputChart } from "@/components/ThroughputChart";
-import { getDashboardStats, type TrackedJobSeed } from "@/lib/api";
+import {
+  getDashboardStats,
+  type DashboardStats,
+  type TrackedJobSeed,
+} from "@/lib/api";
 
 const MAX_TRACKED_JOBS = 100;
 
 export default function DashboardPage() {
+  const [initialStats, setInitialStats] = useState<DashboardStats>();
+
+  return (
+    <BackendWarmupGate onReady={setInitialStats}>
+      <DashboardContent initialStats={initialStats} />
+    </BackendWarmupGate>
+  );
+}
+
+function DashboardContent({ initialStats }: { initialStats?: DashboardStats }) {
   const [trackedJobs, setTrackedJobs] = useState<TrackedJobSeed[]>([]);
 
   const {
@@ -20,6 +35,7 @@ export default function DashboardPage() {
     error: statsError,
     isValidating,
   } = useSWR("dashboard-stats", getDashboardStats, {
+    fallbackData: initialStats,
     refreshInterval: 2000,
     revalidateOnFocus: true,
     keepPreviousData: true,

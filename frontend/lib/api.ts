@@ -74,6 +74,10 @@ export const TASK_TYPES: TaskType[] = [
   "bulk_invoice",
 ];
 
+export type BackendReadyOptions = {
+  timeoutMs?: number;
+};
+
 export const DEMO_PAYLOADS: Record<TaskType, JobPayload> = {
   image_processing: {
     image_url: "https://picsum.photos/800/600",
@@ -142,4 +146,22 @@ export async function getJob(jobId: string): Promise<JobResponse> {
 
 export async function getDashboardStats(): Promise<DashboardStats> {
   return request<DashboardStats>("/api/dashboard-stats");
+}
+
+export async function checkBackendReady(
+  options: BackendReadyOptions = {},
+): Promise<DashboardStats> {
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(),
+    options.timeoutMs ?? 12000,
+  );
+
+  try {
+    return await request<DashboardStats>("/api/dashboard-stats", {
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 }
